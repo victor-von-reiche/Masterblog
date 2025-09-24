@@ -1,11 +1,10 @@
-import json
-
 from flask import Flask, render_template, redirect, request, url_for
+from database import load_posts, save_posts
 
 app = Flask(__name__)
 
-with open("posts.json", encoding="utf-8") as fileobj:
-    blog_posts = json.load(fileobj)
+# Load all posts once at startup
+blog_posts = load_posts()
 
 
 @app.route('/')
@@ -16,15 +15,26 @@ def index():
 
 @app.route('/add', methods=['GET', 'POST'])
 def add():
-    """Handle adding a new blog post via GET or POST."""
+    """Handle adding a new blog post via GET (form) or POST (submit)."""
     if request.method == 'POST':
-        # get form data from HTML form
-        title = request.form.get("title")
-        author = request.form.get("author")
-        content = request.form.get("content")
+        # get form data from HTML form and trim whitespace
+        title = request.form.get("title", "").strip()
+        if not title:
+            return "Title cannot be empty", 400
 
-        # create new ID
-        new_id = max(post["id"] for post in blog_posts) + 1
+        author = request.form.get("author", "").strip()
+        if not author:
+            return "Author cannot be empty", 400
+
+        content = request.form.get("content", "").strip()
+        if not content:
+            return "Content cannot be empty", 400
+
+        # create new ID (safe if list is empty)
+        if blog_posts:
+            new_id = max(post["id"] for post in blog_posts) + 1
+        else:
+            new_id = 1
 
         # build dictionary for post
         new_post = {"id": new_id, "title": title, "author": author, "content": content}
@@ -32,9 +42,8 @@ def add():
         # append new post to list of dictionaries (blog_posts)
         blog_posts.append(new_post)
 
-        # open posts.json and save the new list including new_post
-        with open("posts.json", "w", encoding="utf-8") as file:
-            json.dump(blog_posts, file, indent=4)
+        # save updated posts list to JSON
+        save_posts(blog_posts)
 
         return redirect(url_for('index'))
 
@@ -47,16 +56,16 @@ def delete(post_id):
     for post in blog_posts:
         if post["id"] == post_id:
             blog_posts.remove(post)
-    # Find the blog post with the given id and remove it from the list
-    with open("posts.json", "w", encoding="utf-8") as file:
-        json.dump(blog_posts, file, indent=4)
+
+    # save updated posts list to JSON
+    save_posts(blog_posts)
 
     return redirect(url_for('index'))
 
 
 @app.route('/update/<int:post_id>', methods=['GET', 'POST'])
 def update(post_id):
-    """Update an existing blog post by ID via GET or POST."""
+    """Update an existing blog post by ID via GET (form) or POST (save changes)."""
     # search for post
     post = None
     for p in blog_posts:
@@ -68,19 +77,21 @@ def update(post_id):
         return "Post not found", 404
 
     if request.method == 'POST':
-        # get form data
-        title = request.form.get("title")
-        author = request.form.get("author")
-        content = request.form.get("content")
+        # get form data and trim whitespace
+        title = request.form.get("title", "").strip()
+        if title:
+            post["title"] = title
 
-        # update values
-        post["title"] = title
-        post["author"] = author
-        post["content"] = content
+        author = request.form.get("author", "").strip()
+        if author:
+            post["author"] = author
 
-        # save back to JSON
-        with open("posts.json", "w", encoding="utf-8") as file:
-            json.dump(blog_posts, file, indent=4)
+        content = request.form.get("content", "").strip()
+        if content:
+            post["content"] = content
+
+        # save updated posts list to JSON
+        save_posts(blog_posts)
 
         return redirect(url_for('index'))
 
